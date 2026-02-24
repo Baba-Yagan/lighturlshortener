@@ -5,6 +5,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use rand::{distributions::Alphanumeric, Rng};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -25,7 +26,8 @@ struct UrlEntry {
 #[derive(Deserialize)]
 struct AddParams {
     token: String,
-    short: String,
+    #[serde(default)]
+    short: Option<String>,
     long: String,
 }
 
@@ -107,13 +109,22 @@ async fn add_url_via_get(
         return "Error: Invalid token.".to_string();
     }
 
+    // Generate a short code if one wasn't provided
+    let short_code = params.short.unwrap_or_else(|| {
+        rand::thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(6)
+            .map(char::from)
+            .collect()
+    });
+
     let mut db = state.db.write().await;
-    db.insert(params.short.clone(), params.long.clone());
+    db.insert(short_code.clone(), params.long.clone());
     
     // Write to disk only on update
     save_db(&db);
     
-    format!("Added: {} -> {}", params.short, params.long)
+    format!("http://127.0.0.1:3000/{}", short_code)
 }
 
 async fn update_url(
