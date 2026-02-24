@@ -27,6 +27,7 @@ struct AddParams {
     long: String,
 }
 
+#[derive(Clone)]
 struct AppState {
     // Using RwLock allows multiple concurrent readers (redirects)
     // but exclusive access for writers (updates).
