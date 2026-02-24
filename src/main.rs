@@ -2,11 +2,11 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::{Html, IntoResponse},
-    routing::{get, post},
-    Json, Router,
+    routing::get,
+    Router,
 };
 use rand::{distributions::Alphanumeric, Rng};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::{
     collections::HashMap,
     fs,
@@ -15,13 +15,6 @@ use std::{
 use tokio::sync::RwLock;
 
 const DB_FILE: &str = "urls.json";
-
-#[derive(Clone, Serialize, Deserialize)]
-struct UrlEntry {
-    token: String,
-    short: String,
-    long: String,
-}
 
 #[derive(Deserialize)]
 struct AddParams {
@@ -52,7 +45,6 @@ async fn main() {
         .route("/", get(root))
         .route("/:code", get(redirect))
         .route("/add", get(add_url_via_get))
-        .route("/update", post(update_url))
         .with_state(state);
 
     // 3. Bind to specified address and port
@@ -83,8 +75,7 @@ fn save_db(map: &HashMap<String, String>) {
 async fn root() -> &'static str {
     "Welcome to the URL Shortener. 
     GET /:code to redirect.
-    GET /add?token=SECRET&short=code&long=url to add.
-    POST /update with {\"token\": \"SECRET\", \"short\": \"code\", \"long\": \"url\"} to add."
+    GET /add?token=SECRET&short=code&long=url to add."
 }
 
 async fn redirect(State(state): State<AppState>, Path(code): Path<String>) -> Result<Html<String>, StatusCode> {
@@ -167,6 +158,14 @@ async fn add_url_via_get(
 
     let long_url = params.long.unwrap();
 
+    let mut db = state.db.write().await;
+
+    // Check if the URL already exists in the database
+    if let Some((existing_code, _)) = db.iter().find(|(_, &v)| v == long_url) {
+        // Return the existing short code if found
+        return Html(format!("http://127.0.0.1:3000/{}", existing_code));
+    }
+
     // Generate a short code if one wasn't provided
     let short_code = params.short.unwrap_or_else(|| {
         rand::thread_rng()
@@ -176,30 +175,10 @@ async fn add_url_via_get(
             .collect()
     });
 
-    let mut db = state.db.write().await;
     db.insert(short_code.clone(), long_url);
     
     // Write to disk only on update
     save_db(&db);
     
     Html(format!("http://127.0.0.1:3000/{}", short_code))
-}
-
-async fn update_url(
-    State(state): State<AppState>,
-    Json(entry): Json<UrlEntry>,
-) -> StatusCode {
-    let expected_token = std::env::var("ADD_TOKEN").unwrap_or_else(|_| "".to_string());
-
-    if expected_token.is_empty() || entry.token != expected_token {
-        return StatusCode::UNAUTHORIZED;
-    }
-
-    let mut db = state.db.write().await;
-    db.insert(entry.short.clone(), entry.long);
-    
-    // Write to disk only on update
-    save_db(&db);
-    
-    StatusCode::CREATED
 }
