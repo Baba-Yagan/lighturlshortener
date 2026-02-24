@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::Redirect,
     routing::{get, post},
@@ -16,6 +16,13 @@ const DB_FILE: &str = "urls.json";
 
 #[derive(Clone, Serialize, Deserialize)]
 struct UrlEntry {
+    short: String,
+    long: String,
+}
+
+#[derive(Deserialize)]
+struct AddParams {
+    token: String,
     short: String,
     long: String,
 }
@@ -38,6 +45,7 @@ async fn main() {
     let app = Router::new()
         .route("/", get(root))
         .route("/:code", get(redirect))
+        .route("/add", get(add_url_via_get))
         .route("/update", post(update_url))
         .with_state(state);
 
@@ -67,7 +75,10 @@ fn save_db(map: &HashMap<String, String>) {
 }
 
 async fn root() -> &'static str {
-    "Welcome to the URL Shortener. POST to /update with {\"short\": \"code\", \"long\": \"url\"} to add."
+    "Welcome to the URL Shortener. 
+    GET /:code to redirect.
+    GET /add?token=SECRET&short=code&long=url to add.
+    POST /update with {\"short\": \"code\", \"long\": \"url\"} to add."
 }
 
 async fn redirect(State(state): State<AppState>, Path(code): Path<String>) -> Result<Redirect, StatusCode> {
@@ -77,6 +88,29 @@ async fn redirect(State(state): State<AppState>, Path(code): Path<String>) -> Re
     } else {
         Err(StatusCode::NOT_FOUND)
     }
+}
+
+async fn add_url_via_get(
+    Query(params): Query<AddParams>,
+    State(state): State<AppState>,
+) -> String {
+    let expected_token = std::env::var("ADD_TOKEN").unwrap_or_else(|_| "".to_string());
+    
+    if expected_token.is_empty() {
+        return "Error: ADD_TOKEN environment variable not set.".to_string();
+    }
+
+    if params.token != expected_token {
+        return "Error: Invalid token.".to_string();
+    }
+
+    let mut db = state.db.write().await;
+    db.insert(params.short.clone(), params.long.clone());
+    
+    // Write to disk only on update
+    save_db(&db);
+    
+    format!("Added: {} -> {}", params.short, params.long)
 }
 
 async fn update_url(
