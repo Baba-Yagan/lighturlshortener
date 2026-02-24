@@ -1,7 +1,7 @@
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
-    response::Redirect,
+    response::{Html, Redirect},
     routing::{get, post},
     Json, Router,
 };
@@ -86,10 +86,33 @@ async fn root() -> &'static str {
     POST /update with {\"token\": \"SECRET\", \"short\": \"code\", \"long\": \"url\"} to add."
 }
 
-async fn redirect(State(state): State<AppState>, Path(code): Path<String>) -> Result<Redirect, StatusCode> {
+async fn redirect(State(state): State<AppState>, Path(code): Path<String>) -> Result<Html<String>, StatusCode> {
     let db = state.db.read().await;
     if let Some(url) = db.get(&code) {
-        Ok(Redirect::permanent(url))
+        let html = format!(
+            r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Redirecting...</title>
+    <meta http-equiv="refresh" content="5;url={}" />
+    <script>
+        setTimeout(function(){{
+            window.location.href = "{}";
+        }}, 5000);
+    </script>
+</head>
+<body>
+    <p>Redirecting in 5 seconds...</p>
+    <noscript>
+        <p>Click <a href="{}">here</a> if you are not redirected automatically.</p>
+    </noscript>
+</body>
+</html>"#,
+            url, url, url
+        );
+        Ok(Html(html))
     } else {
         Err(StatusCode::NOT_FOUND)
     }
