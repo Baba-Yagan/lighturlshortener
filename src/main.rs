@@ -17,6 +17,7 @@ const DB_FILE: &str = "urls.json";
 
 #[derive(Clone, Serialize, Deserialize)]
 struct UrlEntry {
+    token: String,
     short: String,
     long: String,
 }
@@ -80,7 +81,7 @@ async fn root() -> &'static str {
     "Welcome to the URL Shortener. 
     GET /:code to redirect.
     GET /add?token=SECRET&short=code&long=url to add.
-    POST /update with {\"short\": \"code\", \"long\": \"url\"} to add."
+    POST /update with {\"token\": \"SECRET\", \"short\": \"code\", \"long\": \"url\"} to add."
 }
 
 async fn redirect(State(state): State<AppState>, Path(code): Path<String>) -> Result<Redirect, StatusCode> {
@@ -119,6 +120,12 @@ async fn update_url(
     State(state): State<AppState>,
     Json(entry): Json<UrlEntry>,
 ) -> StatusCode {
+    let expected_token = std::env::var("ADD_TOKEN").unwrap_or_else(|_| "".to_string());
+
+    if expected_token.is_empty() || entry.token != expected_token {
+        return StatusCode::UNAUTHORIZED;
+    }
+
     let mut db = state.db.write().await;
     db.insert(entry.short.clone(), entry.long);
     
