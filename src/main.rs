@@ -90,6 +90,13 @@ async fn root() -> &'static str {
 async fn redirect(State(state): State<AppState>, Path(code): Path<String>) -> Result<Html<String>, StatusCode> {
     let db = state.db.read().await;
     if let Some(url) = db.get(&code) {
+        // Ensure the URL has a protocol to prevent relative redirects
+        let target_url = if url.starts_with("http://") || url.starts_with("https://") {
+            url.clone()
+        } else {
+            format!("http://{}", url)
+        };
+
         let html = format!(
             r#"<!DOCTYPE html>
 <html lang="en">
@@ -111,7 +118,7 @@ async fn redirect(State(state): State<AppState>, Path(code): Path<String>) -> Re
     </noscript>
 </body>
 </html>"#,
-            url, url, url
+            target_url, target_url, target_url
         );
         Ok(Html(html))
     } else {
