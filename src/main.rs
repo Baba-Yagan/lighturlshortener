@@ -1,7 +1,7 @@
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
-    response::{Html, IntoResponse, Redirect},
+    response::{Html, IntoResponse},
     routing::{get, post},
     Json, Router,
 };
@@ -126,11 +126,11 @@ async fn add_url_via_get(
     let expected_token = std::env::var("ADD_TOKEN").unwrap_or_else(|_| "".to_string());
     
     if expected_token.is_empty() {
-        return "Error: ADD_TOKEN environment variable not set.".to_string();
+        return Html("<p>Error: ADD_TOKEN environment variable not set.</p>".to_string());
     }
 
     if params.token != expected_token {
-        return "Error: Invalid token.".to_string();
+        return Html("<p>Error: Invalid token.</p>".to_string());
     }
 
     // If long URL is missing or empty, show the HTML form
@@ -175,7 +175,7 @@ async fn add_url_via_get(
     // Write to disk only on update
     save_db(&db);
     
-    format!("http://127.0.0.1:3000/{}", short_code)
+    Html(format!("http://127.0.0.1:3000/{}", short_code))
 }
 
 async fn update_url(
