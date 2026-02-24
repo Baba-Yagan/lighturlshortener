@@ -1,7 +1,7 @@
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
-    response::{Html, Redirect},
+    response::{Html, IntoResponse, Redirect},
     routing::{get, post},
     Json, Router,
 };
@@ -28,7 +28,8 @@ struct AddParams {
     token: String,
     #[serde(default)]
     short: Option<String>,
-    long: String,
+    #[serde(default)]
+    long: Option<String>,
 }
 
 #[derive(Clone)]
@@ -121,7 +122,7 @@ async fn redirect(State(state): State<AppState>, Path(code): Path<String>) -> Re
 async fn add_url_via_get(
     Query(params): Query<AddParams>,
     State(state): State<AppState>,
-) -> String {
+) -> impl IntoResponse {
     let expected_token = std::env::var("ADD_TOKEN").unwrap_or_else(|_| "".to_string());
     
     if expected_token.is_empty() {
@@ -131,6 +132,33 @@ async fn add_url_via_get(
     if params.token != expected_token {
         return "Error: Invalid token.".to_string();
     }
+
+    // If long URL is missing or empty, show the HTML form
+    if params.long.is_none() || params.long.as_ref().unwrap().is_empty() {
+        let html = format!(
+            r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shorten URL</title>
+</head>
+<body>
+    <h2>Shorten URL</h2>
+    <form action="/add" method="get">
+        <input type="hidden" name="token" value="{}" />
+        <label for="long">Long URL:</label><br>
+        <input type="text" id="long" name="long" style="width: 300px;" required /><br><br>
+        <button type="submit">Shorten</button>
+    </form>
+</body>
+</html>"#,
+            params.token
+        );
+        return Html(html);
+    }
+
+    let long_url = params.long.unwrap();
 
     // Generate a short code if one wasn't provided
     let short_code = params.short.unwrap_or_else(|| {
@@ -142,7 +170,7 @@ async fn add_url_via_get(
     });
 
     let mut db = state.db.write().await;
-    db.insert(short_code.clone(), params.long.clone());
+    db.insert(short_code.clone(), long_url);
     
     // Write to disk only on update
     save_db(&db);
