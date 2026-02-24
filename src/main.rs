@@ -30,28 +30,36 @@ struct AppState {
     // Using RwLock allows multiple concurrent readers (redirects)
     // but exclusive access for writers (updates).
     db: Arc<RwLock<HashMap<String, String>>>,
+    base_url: String,
 }
 
 #[tokio::main]
 async fn main() {
     // 1. Load data from disk into memory
     let initial_map = load_db();
+
+    // 2. Setup Host and Port
+    let host = std::env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+    let port = std::env::var("PORT").unwrap_or_else(|_| "3000".to_string());
+    let addr = format!("{}:{}", host, port);
+
+    // 3. Setup Base URL
+    // Check for BASE_URL env var, otherwise construct from host and port
+    let base_url = std::env::var("BASE_URL").unwrap_or_else(|_| format!("http://{}", addr));
+
     let state = AppState {
         db: Arc::new(RwLock::new(initial_map)),
+        base_url,
     };
 
-    // 2. Setup Router
+    // 4. Setup Router
     let app = Router::new()
         .route("/", get(root))
         .route("/:code", get(redirect))
         .route("/add", get(add_url_via_get))
         .with_state(state);
 
-    // 3. Bind to specified address and port
-    let host = std::env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
-    let port = std::env::var("PORT").unwrap_or_else(|_| "3000".to_string());
-    let addr = format!("{}:{}", host, port);
-
+    // 5. Bind to specified address and port
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     println!("Listening on http://{}", addr);
     axum::serve(listener, app).await.unwrap();
@@ -162,8 +170,8 @@ async fn add_url_via_get(
 
     // Check if the URL already exists in the database
     if let Some((existing_code, _)) = db.iter().find(|(_, v)| *v == &long_url) {
-        // Return the existing short code if found
-        return Html(format!("http://127.0.0.1:3000/{}", existing_code));
+        // Return the existing short code if found using the configured base_url
+        return Html(format!("{}/{}", state.base_url, existing_code));
     }
 
     // Generate a short code if one wasn't provided
@@ -180,5 +188,6 @@ async fn add_url_via_get(
     // Write to disk only on update
     save_db(&db);
     
-    Html(format!("http://127.0.0.1:3000/{}", short_code))
+    // Return the new short URL using the configured base_url
+    Html(format!("{}/{}", state.base_url, short_code))
 }
