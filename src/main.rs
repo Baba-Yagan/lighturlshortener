@@ -161,7 +161,7 @@ async fn add_url_via_get(
     let mut db = state.db.write().await;
 
     // Check if the URL already exists in the database
-    if let Some((existing_code, _)) = db.iter().find(|(_, v)| v == long_url) {
+    if let Some((existing_code, _)) = db.iter().find(|(_, v)| *v == &long_url) {
         // Return the existing short code if found
         return Html(format!("http://127.0.0.1:3000/{}", existing_code));
     }
